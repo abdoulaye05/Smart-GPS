@@ -62,7 +62,7 @@ L'application s'ouvrira automatiquement dans votre navigateur ! 🎉
 
 ### Étape 3 : Comprendre le Projet
 
-1. **Lire la documentation HTML** : Ouvrez `Documentation_GPS_Intelligent.html` dans votre navigateur
+1. **Lire la documentation HTML** : Visitez [https://smart-gps.netlify.app](https://smart-gps.netlify.app) ou ouvrez `docs/index.html` localement
 2. **Explorer le code** : Commencez par `src/graph.py` puis `src/algorithms.py`
 3. **Lire la documentation** : Consultez les fichiers dans `docs/`
 
@@ -98,7 +98,7 @@ ProjetS5_maths/
 ├── README.md                    # Ce fichier
 ├── STRUCTURE.md                 # Structure détaillée
 ├── requirements.txt             # Dépendances Python
-├── Documentation_GPS_Intelligent.html  # Documentation HTML complète
+├── docs/index.html                      # Documentation HTML complète (aussi sur [Netlify](https://smart-gps.netlify.app))
 │
 ├── src/                         # Code source
 │   ├── graph.py                 # Structures de graphes
@@ -185,7 +185,7 @@ chmod +x run.sh
 2. **Expériences complètes** : Lance `experiments/comparaison_algos.py`
 3. **Tests unitaires** : Lance `pytest tests/ -v`
 4. **Application web interactive** : Lance `streamlit run webapp_demo.py`
-5. **Documentation HTML** : Ouvre `Documentation_GPS_Intelligent.html`
+5. **Documentation HTML** : Ouvre `docs/index.html` ou visite [https://smart-gps.netlify.app](https://smart-gps.netlify.app)
 
 #### Sur Windows : `run.bat`
 
@@ -313,7 +313,9 @@ pytest tests/test_algorithms.py -v
 
 ### Documentation HTML Interactive
 
-Ouvrez `Documentation_GPS_Intelligent.html` dans votre navigateur pour une documentation complète avec :
+🌐 **Documentation en ligne** : [https://smart-gps.netlify.app](https://smart-gps.netlify.app)
+
+Ou ouvrez localement `docs/index.html` dans votre navigateur pour une documentation complète avec :
 - ✅ Formules mathématiques (LaTeX)
 - ✅ Visualisations et figures
 - ✅ Exemples de code
