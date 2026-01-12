@@ -57,5 +57,6 @@ data/*.json
 
 # Fichiers de présentation (non versionnés)
 COMMENT_PRESENTER.md
+STRUCTURE.md
 
 
