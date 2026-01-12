@@ -55,4 +55,7 @@ data/*.json
 # Profiling
 *.prof
 
+# Fichiers de présentation (non versionnés)
+COMMENT_PRESENTER.md
+
 
