@@ -1,0 +1,62 @@
+{
+  "Grille 20×20": {
+    "dijkstra": {
+      "cost": 1900.0,
+      "visited": 400,
+      "time_ms": 0.380749988835305,
+      "success": true
+    },
+    "astar": {
+      "cost": 1900.0,
+      "visited": 400,
+      "time_ms": 0.4925419925712049,
+      "success": true
+    },
+    "bellman_ford": {
+      "cost": 1900.0,
+      "visited": 400,
+      "time_ms": 64.01383297634311,
+      "success": true
+    }
+  },
+  "Urbain Aléatoire (200 sommets)": {
+    "dijkstra": {
+      "cost": 1574.1811332434756,
+      "visited": 149,
+      "time_ms": 0.20812501315958798,
+      "success": true
+    },
+    "astar": {
+      "cost": 1574.1811332434756,
+      "visited": 37,
+      "time_ms": 0.10837498120963573,
+      "success": true
+    },
+    "bellman_ford": {
+      "cost": 1574.1811332434756,
+      "visited": 200,
+      "time_ms": 25.692708004498854,
+      "success": true
+    }
+  },
+  "Ville Clustérisée (150 sommets)": {
+    "dijkstra": {
+      "cost": 1969.31766410426,
+      "visited": 108,
+      "time_ms": 0.13875000877305865,
+      "success": true
+    },
+    "astar": {
+      "cost": 1969.31766410426,
+      "visited": 64,
+      "time_ms": 0.13525001122616231,
+      "success": true
+    },
+    "bellman_ford": {
+      "cost": 1969.31766410426,
+      "visited": 150,
+      "time_ms": 13.142209005309269,
+      "success": true
+    }
+  }
+}
