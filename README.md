@@ -329,10 +329,6 @@ Ou ouvrez localement `docs/index.html` dans votre navigateur pour une documentat
 - **`docs/modele_temps_reel.md`** : Modèle de temps réaliste (t = t₀ + d/v)
 - **`docs/conclusion.md`** : Conclusion et perspectives
 
-### Guide de Présentation
-
-- **`COMMENT_PRESENTER.md`** : Guide complet pour la soutenance
-
 ---
 
 ## 🤝 Contribution (Pour les Néophytes)
