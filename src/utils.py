@@ -162,6 +162,7 @@ def print_path_result(
         print(f"  • Coût total         : {result.cost:.2f}")
         print(f"  • Longueur du chemin : {len(result.path)} sommets")
         print(f"  • Sommets visités    : {result.visited_nodes}")
+        print(f"  • Exploration        : {result.visited_nodes / graph.num_vertices() * 100:.1f}% du graphe")
         print(f"  • Arêtes relaxées    : {result.relaxed_edges}")
         print(f"  • Temps d'exécution  : {result.execution_time * 1000:.2f} ms")
         
@@ -192,28 +193,29 @@ def compare_and_print(
     print(f"Graphe : {graph.num_vertices()} sommets, {graph.num_edges_count()} arêtes\n")
     
     # Tableau comparatif
-    print(f"{'Algorithme':<15} {'Coût':<10} {'Sommets':<10} {'Temps (ms)':<12} {'Speedup':<10}")
-    print(f"{'-'*60}")
+    print(f"{'Algorithme':<15} {'Coût':<10} {'Sommets':<10} {'% Expl.':<10} {'Temps (ms)':<12} {'Speedup':<10}")
+    print(f"{'-'*70}")
     
     base_time = None
     
     for name, result in results.items():
         if result.success:
             time_ms = result.execution_time * 1000
+            expl_pct = f"{result.visited_nodes / graph.num_vertices() * 100:.1f}%"
             
             if base_time is None:
                 base_time = time_ms
                 speedup = "1.00x (ref)"
             else:
-                speedup = f"{base_time / time_ms:.2f}x"
+                speedup = f"{base_time / time_ms:.2f}x" if time_ms > 0 else "N/A"
             
-            print(f"{name:<15} {result.cost:<10.2f} {result.visited_nodes:<10} "
+            print(f"{name:<15} {result.cost:<10.2f} {result.visited_nodes:<10} {expl_pct:<10} "
                   f"{time_ms:<12.2f} {speedup:<10}")
         else:
-            print(f"{name:<15} {'N/A':<10} {result.visited_nodes:<10} "
+            print(f"{name:<15} {'N/A':<10} {result.visited_nodes:<10} {'N/A':<10} "
                   f"{result.execution_time * 1000:<12.2f} {'N/A':<10}")
     
-    print(f"{'-'*60}\n")
+    print(f"{'-'*70}\n")
     
     # Analyse
     if len(results) >= 2:

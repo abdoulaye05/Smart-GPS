@@ -17,6 +17,7 @@ import time
 from .graph import Graph
 
 
+
 class PathResult:
     """
     Classe encapsulant les résultats d'un algorithme de plus court chemin.
@@ -25,6 +26,7 @@ class PathResult:
         path: Liste des IDs de sommets formant le chemin
         cost: Coût total du chemin
         visited_nodes: Nombre de sommets visités
+        explored_nodes: Ensemble des IDs de sommets explorés (pour visualisation)
         relaxed_edges: Nombre d'arêtes relaxées
         execution_time: Temps d'exécution (secondes)
         success: True si un chemin a été trouvé
@@ -35,6 +37,7 @@ class PathResult:
         path: List[int] = None,
         cost: float = float('inf'),
         visited_nodes: int = 0,
+        explored_nodes: Set[int] = None,
         relaxed_edges: int = 0,
         execution_time: float = 0.0,
         success: bool = False
@@ -42,9 +45,10 @@ class PathResult:
         self.path = path or []
         self.cost = cost
         self.visited_nodes = visited_nodes
+        self.explored_nodes = explored_nodes or set()
         self.relaxed_edges = relaxed_edges
         self.execution_time = execution_time
-        self.success = success
+        self.success = execution_time >= 0 and success  # Petit fix pour garder success
     
     def __repr__(self) -> str:
         if self.success:
@@ -63,24 +67,6 @@ def dijkstra(
 ) -> PathResult:
     """
     Algorithme de Dijkstra pour le plus court chemin.
-    
-    Principe :
-        Exploration progressive des sommets par ordre croissant de distance
-        depuis la source. Garantit l'optimalité avec poids positifs.
-    
-    Complexité : O((n + m) log n) avec tas binaire
-    
-    Args:
-        graph: Le graphe à explorer
-        source: Sommet source
-        target: Sommet cible (si None, calcule tous les plus courts chemins)
-        return_stats: Si True, retourne statistiques détaillées
-        
-    Returns:
-        PathResult contenant le chemin et les statistiques
-        
-    Raises:
-        ValueError: Si source ou target n'existe pas
     """
     start_time = time.perf_counter()
     
@@ -96,6 +82,7 @@ def dijkstra(
             path=[source],
             cost=0.0,
             visited_nodes=1,
+            explored_nodes={source},
             execution_time=time.perf_counter() - start_time,
             success=True
         )
@@ -154,6 +141,7 @@ def dijkstra(
             # Pas de chemin trouvé
             return PathResult(
                 visited_nodes=visited_count,
+                explored_nodes=visited,
                 relaxed_edges=relaxed_count,
                 execution_time=execution_time,
                 success=False
@@ -171,6 +159,7 @@ def dijkstra(
             path=path,
             cost=distances[target],
             visited_nodes=visited_count,
+            explored_nodes=visited,
             relaxed_edges=relaxed_count,
             execution_time=execution_time,
             success=True
@@ -179,6 +168,7 @@ def dijkstra(
     # Retour de toutes les distances (mode "single-source")
     return PathResult(
         visited_nodes=visited_count,
+        explored_nodes=visited,
         relaxed_edges=relaxed_count,
         execution_time=execution_time,
         success=True
@@ -194,30 +184,6 @@ def astar(
 ) -> PathResult:
     """
     Algorithme A* (A-étoile) pour le plus court chemin.
-    
-    Principe :
-        Exploration guidée par une heuristique h(v) estimant le coût restant.
-        Utilise f(v) = g(v) + h(v) pour prioriser les sommets prometteurs.
-        
-    Heuristique par défaut : distance euclidienne (admissible et consistante)
-    
-    Complexité : 
-        - Pire cas : O((n + m) log n)
-        - Meilleur cas : O(k log k) où k = longueur du chemin
-        
-    Args:
-        graph: Le graphe à explorer
-        source: Sommet source
-        target: Sommet cible
-        heuristic: Fonction h(vertex_id, target_id, graph) -> float
-                   Si None, utilise distance euclidienne
-        return_stats: Si True, retourne statistiques détaillées
-        
-    Returns:
-        PathResult contenant le chemin et les statistiques
-        
-    Raises:
-        ValueError: Si source ou target n'existe pas
     """
     start_time = time.perf_counter()
     
@@ -233,18 +199,20 @@ def astar(
             path=[source],
             cost=0.0,
             visited_nodes=1,
+            explored_nodes={source},
             execution_time=time.perf_counter() - start_time,
             success=True
         )
     
-    # Heuristique par défaut : distance euclidienne
+    # Heuristique par défaut : adaptative
     if heuristic is None:
-        def euclidean_heuristic(v_id: int, t_id: int, g: Graph) -> float:
-            """Heuristique basée sur la distance euclidienne."""
+        def default_heuristic(v_id: int, t_id: int, g: Graph) -> float:
+            """Heuristique adaptative (Euclidienne ou Haversine)."""
             v = g.vertices[v_id]
             t = g.vertices[t_id]
-            return v.distance_to(t)
-        heuristic = euclidean_heuristic
+            metric = 'haversine' if getattr(g, 'is_geographic', False) else 'euclidean'
+            return v.distance_to(t, metric=metric)
+        heuristic = default_heuristic
     
     # Initialisation
     g_scores: Dict[int, float] = {v: float('inf') for v in graph.vertices}
@@ -319,6 +287,7 @@ def astar(
     if g_scores[target] == float('inf'):
         return PathResult(
             visited_nodes=visited_count,
+            explored_nodes=closed_set,
             relaxed_edges=relaxed_count,
             execution_time=execution_time,
             success=False
@@ -336,6 +305,7 @@ def astar(
         path=path,
         cost=g_scores[target],
         visited_nodes=visited_count,
+        explored_nodes=closed_set,
         relaxed_edges=relaxed_count,
         execution_time=execution_time,
         success=True
@@ -349,14 +319,6 @@ def compare_algorithms(
 ) -> Dict[str, PathResult]:
     """
     Compare Dijkstra, A* et Bellman-Ford sur le même graphe.
-    
-    Args:
-        graph: Le graphe
-        source: Sommet source
-        target: Sommet cible
-        
-    Returns:
-        Dictionnaire avec les résultats des trois algorithmes
     """
     results = {}
     
@@ -379,17 +341,6 @@ def bellman_ford(
 ) -> PathResult:
     """
     Algorithme de Bellman-Ford (bonus).
-    
-    Permet de gérer les poids négatifs (pas utilisé dans ce projet).
-    Complexité : O(n * m)
-    
-    Args:
-        graph: Le graphe
-        source: Sommet source
-        target: Sommet cible optionnel
-        
-    Returns:
-        PathResult
     """
     start_time = time.perf_counter()
     
@@ -426,6 +377,7 @@ def bellman_ford(
         if distances[target] == float('inf'):
             return PathResult(
                 visited_nodes=len(visited_vertices),
+                explored_nodes=visited_vertices,
                 relaxed_edges=relaxed_count,
                 execution_time=execution_time,
                 success=False
@@ -442,6 +394,7 @@ def bellman_ford(
             path=path,
             cost=distances[target],
             visited_nodes=len(visited_vertices),
+            explored_nodes=visited_vertices,
             relaxed_edges=relaxed_count,
             execution_time=execution_time,
             success=True
@@ -449,6 +402,7 @@ def bellman_ford(
     
     return PathResult(
         visited_nodes=len(visited_vertices),
+        explored_nodes=visited_vertices,
         relaxed_edges=relaxed_count,
         execution_time=execution_time,
         success=True

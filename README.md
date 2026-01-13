@@ -529,7 +529,5 @@ Voir `LICENSE` pour plus de détails.
 - **Algorithmes** : 3 (Dijkstra, A*, Bellman-Ford)
 - **Figures** : 12+ visualisations
 
----
-
-**Diallo Abdoulaye • Semih Taskin • Muller Arthur**  
+---**Diallo Abdoulaye • Semih Taskin • Muller Arthur**  
 **BUT Informatique S5 - Novembre 2025**

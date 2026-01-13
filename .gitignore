@@ -59,4 +59,7 @@ data/*.json
 COMMENT_PRESENTER.md
 STRUCTURE.md
 
+# Cache OSMnx
+cache/
+
 

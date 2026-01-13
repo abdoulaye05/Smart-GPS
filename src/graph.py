@@ -10,6 +10,22 @@ Ce module définit les structures de données pour représenter un graphe pondé
 from typing import Dict, List, Tuple, Optional, Set
 import math
 
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Calcule la distance de Haversine entre deux points géographiques.
+    Retourne la distance en mètres.
+    """
+    R = 6371000  # Rayon de la Terre en mètres
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    
+    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    return R * c
+
+
 
 class Vertex:
     """
@@ -28,16 +44,22 @@ class Vertex:
         self.y = y
         self.label = label or f"V{id}"
     
-    def distance_to(self, other: 'Vertex') -> float:
+    
+    def distance_to(self, other: 'Vertex', metric: str = 'euclidean') -> float:
         """
-        Calcule la distance euclidienne vers un autre sommet.
+        Calcule la distance vers un autre sommet.
         
         Args:
             other: Autre sommet
+            metric: 'euclidean' (plan) ou 'haversine' (géographique)
             
         Returns:
-            Distance euclidienne (en unités du plan)
+            Distance (unités du plan ou mètres)
         """
+        if metric == 'haversine':
+            # x=lon, y=lat
+            # Retourner en KM pour correspondre aux poids des arêtes OSM
+            return haversine_distance(self.y, self.x, other.y, other.x) / 1000.0
         return math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
     
     def __repr__(self) -> str:
@@ -103,6 +125,7 @@ class Graph:
         self.adjacency_list: Dict[int, List[Tuple[int, float, Edge]]] = {}
         self.directed = directed
         self.num_edges = 0
+        self.is_geographic = False  # True si les coordonnées sont lat/lon
     
     def add_vertex(self, vertex_id: int, x: float = 0.0, y: float = 0.0, label: str = "") -> Vertex:
         """

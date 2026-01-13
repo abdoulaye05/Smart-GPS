@@ -180,8 +180,8 @@ def demo_multiple_scenarios():
             print(f"  • A* : {results['astar'].execution_time * 1000:.2f} ms")
             # Protection contre division par zéro
             if results['astar'].execution_time > 0:
-                speedup = results['dijkstra'].execution_time / results['astar'].execution_time
-                print(f"  • Speedup : {speedup:.2f}x")
+            speedup = results['dijkstra'].execution_time / results['astar'].execution_time
+            print(f"  • Speedup : {speedup:.2f}x")
             else:
                 print(f"  • Speedup : N/A (temps d'exécution trop court)")
     
@@ -197,7 +197,7 @@ def demo_multiple_scenarios():
         if results['astar'].success:
             # Protection contre division par zéro
             if results['astar'].execution_time > 0:
-                speedup = results['dijkstra'].execution_time / results['astar'].execution_time
+            speedup = results['dijkstra'].execution_time / results['astar'].execution_time
                 speedup_str = f"{speedup:.2f}x"
             else:
                 speedup_str = "N/A"

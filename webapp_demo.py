@@ -15,16 +15,110 @@ import folium
 from streamlit_folium import st_folium
 import random
 import time
+import math
 from src.graph import Graph
 from src.algorithms import astar, dijkstra, bellman_ford
 from src.generators import generate_random_urban_graph
 from src.utils import print_path_result
 
+# Import OSMnx pour les vraies données géographiques
+try:
+    import osmnx as ox
+    OSMNX_AVAILABLE = True
+except ImportError:
+    OSMNX_AVAILABLE = False
+    # Le warning sera affiché dans la sidebar si l'utilisateur essaie d'utiliser les vraies routes
+
+
+def create_real_city_from_osm(place_name="11e Arrondissement, Paris, France", network_type="drive", simplify=True, max_nodes=5000):
+    """
+    Crée un graphe à partir des vraies données OpenStreetMap.
+    
+    Args:
+        place_name: Nom du lieu (ex: "Paris, France", "Les Halles, Paris")
+        network_type: Type de réseau ("drive", "walk", "bike", "all")
+        simplify: Si True, simplifie le graphe (enlève les nœuds intermédiaires)
+    
+    Returns:
+        Graph avec vraies coordonnées géographiques
+    """
+    if not OSMNX_AVAILABLE:
+        return create_sample_city()
+    
+    try:
+        # Télécharger le réseau routier depuis OpenStreetMap
+        with st.spinner("📥 Téléchargement des données OpenStreetMap..."):
+            G_osm = ox.graph_from_place(place_name, network_type=network_type, simplify=False)
+        
+        # Simplifier le graphe pour réduire le nombre de nœuds
+        if simplify:
+            with st.spinner("🔧 Simplification du graphe..."):
+                G_osm = ox.simplify_graph(G_osm)
+        
+        # Convertir NetworkX vers notre format Graph
+        graph = Graph(directed=False)
+        graph.is_geographic = True
+        
+        # Créer un mapping OSM node_id -> notre vertex_id
+        node_mapping = {}
+        vertex_id = 0
+        
+        # Ajouter tous les sommets avec leurs vraies coordonnées
+        with st.spinner("📍 Conversion des intersections..."):
+            for node_id, data in G_osm.nodes(data=True):
+                lat = data.get('y', 0)  # OSMnx utilise 'y' pour latitude
+                lng = data.get('x', 0)  # OSMnx utilise 'x' pour longitude
+                
+                graph.add_vertex(vertex_id, lng, lat, label=f"OSM_{node_id}")
+                node_mapping[node_id] = vertex_id
+                vertex_id += 1
+        
+        # Ajouter toutes les arêtes avec leurs vraies longueurs
+        with st.spinner("🛣️ Conversion des routes..."):
+            edges_added = 0
+            for u, v, data in G_osm.edges(data=True):
+                if u in node_mapping and v in node_mapping:
+                    # Utiliser la longueur réelle de l'arête (en mètres)
+                    length_m = data.get('length', 0)
+                    if length_m == 0:
+                        # Si pas de longueur, calculer depuis les coordonnées
+                        u_node = G_osm.nodes[u]
+                        v_node = G_osm.nodes[v]
+                        lat1, lng1 = u_node.get('y', 0), u_node.get('x', 0)
+                        lat2, lng2 = v_node.get('y', 0), v_node.get('x', 0)
+                        # Distance haversine approximative (en mètres)
+                        R = 6371000  # Rayon de la Terre en mètres
+                        dlat = math.radians(lat2 - lat1)
+                        dlng = math.radians(lng2 - lng1)
+                        a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng/2)**2
+                        length_m = 2 * R * math.asin(math.sqrt(a))
+                    
+                    # Convertir en kilomètres pour le poids
+                    weight_km = length_m / 1000.0
+                    
+                    # Éviter les doublons (graphe non orienté)
+                    if not graph.has_edge(node_mapping[u], node_mapping[v]):
+                        graph.add_edge(
+                            node_mapping[u], 
+                            node_mapping[v], 
+                            weight=weight_km
+                        )
+                        edges_added += 1
+        
+        # Ne pas afficher de message ici - sera géré dans main()
+        return graph
+    
+    except Exception as e:
+        # Logger l'erreur mais ne pas afficher de message (sera géré dans main())
+        import traceback
+        print(f"Erreur OSM: {str(e)}")
+        traceback.print_exc()
+        # Retourner le graphe généré en cas d'erreur
+        return create_sample_city()
+
 
 def create_sample_city():
-    """Crée une ville d'exemple."""
-    # Pour l'instant, utiliser un graphe généré
-    # Plus tard: remplacer par OSMnx
+    """Crée une ville d'exemple avec un graphe généré (pas de vraies coordonnées)."""
     graph = generate_random_urban_graph(
         num_vertices=100,
         avg_degree=4,
@@ -109,6 +203,121 @@ def add_path_to_map(map, graph, path, color='red', transport_icon='<i class="fas
     return map
 
 
+
+def create_exploration_map(graph, result, color='#3388ff'):
+    """Crée une carte montrant la zone explorée."""
+    # Calculer le centre (barycentre des nœuds explorés ou du graphe)
+    if result.explored_nodes:
+        # Centre sur les nœuds explorés
+        explored_vertices = [graph.vertices[v_id] for v_id in result.explored_nodes if v_id in graph.vertices]
+        if explored_vertices:
+            avg_x = sum(v.x for v in explored_vertices) / len(explored_vertices)
+            avg_y = sum(v.y for v in explored_vertices) / len(explored_vertices)
+        else:
+            avg_x, avg_y = 2.34, 48.85
+    else:
+        avg_x, avg_y = 2.34, 48.85
+        
+    m = folium.Map(location=[avg_y, avg_x], zoom_start=14, tiles='cartodbpositron')
+    
+    # Dessiner les nœuds explorés
+    if result.explored_nodes:
+        for v_id in result.explored_nodes:
+            if v_id in graph.vertices:
+                v = graph.vertices[v_id]
+                folium.Circle(
+                    location=[v.y, v.x],
+                    radius=15,
+                    color=color,
+                    fill=True,
+                    fill_opacity=0.4,
+                    weight=0
+                ).add_to(m)
+            
+    # Ajouter le chemin final
+    if result.success:
+        add_path_to_map(m, graph, result.path, color='black', transport_icon='')
+        
+    return m
+
+@st.dialog("Comparaison des Performances", width="large")
+def show_comparison_dialog(graph, source, target):
+    """Affiche la comparaison dans une fenêtre modale."""
+    st.markdown("""
+        <div style='margin-bottom: 1rem; background-color: #e7f3ff; color: #000000; border-left: 4px solid #2196F3; padding: 0.75rem; border-radius: 0.25rem;'>
+            <i class='fas fa-info-circle'></i> <strong>Comparaison en cours...</strong> Les 3 algorithmes sont calculés en temps réel.
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Calculer avec les 3 algorithmes
+    with st.spinner("Calcul en cours..."):
+        result_dijkstra = dijkstra(graph, source, target)
+        result_astar = astar(graph, source, target)
+        result_bellman = bellman_ford(graph, source, target)
+    
+    # Affichage côte à côte
+    col_dijk, col_astar, col_bell = st.columns(3)
+    
+    map_height = 350  # Plus grand pour la popup
+    
+    with col_dijk:
+        st.markdown("### <i class='fas fa-square'></i> Dijkstra", unsafe_allow_html=True)
+        if result_dijkstra.success:
+            st.metric("Temps", f"{result_dijkstra.execution_time*1000:.2f} ms")
+            st.metric("Sommets explorés", result_dijkstra.visited_nodes)
+            st.caption("Exploration uniforme (cercle)")
+            
+            # Carte exploration
+            m_dijk = create_exploration_map(graph, result_dijkstra, color='#FF5733') # Rouge/Orange
+            st_folium(m_dijk, width=None, height=map_height, key="map_dijk_popup")
+        else:
+            st.error("Échec")
+    
+    with col_astar:
+        st.markdown("### <i class='fas fa-star'></i> A*", unsafe_allow_html=True)
+        if result_astar.success:
+            st.metric("Temps", f"{result_astar.execution_time*1000:.2f} ms")
+            st.metric("Sommets explorés", result_astar.visited_nodes)
+            st.caption("Exploration dirigée (faisceau)")
+            
+            # Indicateur de performance
+            if result_astar.visited_nodes < result_dijkstra.visited_nodes:
+                st.markdown(f"""
+                    <div style='background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 0.25rem; padding: 0.5rem; margin-bottom: 0.5rem; color: #155724; font-size: 0.9em;'>
+                        <i class='fas fa-bolt'></i> <strong>{((result_dijkstra.visited_nodes - result_astar.visited_nodes) / result_dijkstra.visited_nodes * 100):.0f}% moins de nœuds</strong>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            # Carte exploration
+            m_astar = create_exploration_map(graph, result_astar, color='#3388ff') # Bleu
+            st_folium(m_astar, width=None, height=map_height, key="map_astar_popup")
+
+        else:
+            st.error("Échec")
+    
+    with col_bell:
+        st.markdown("### <i class='fas fa-shield-alt'></i> Bellman-Ford", unsafe_allow_html=True)
+        if result_bellman.success:
+            st.metric("Temps", f"{result_bellman.execution_time*1000:.2f} ms")
+            st.metric("Sommets explorés", result_bellman.visited_nodes)
+            st.caption("Exploration exhaustive")
+            
+            # Carte exploration
+            m_bell = create_exploration_map(graph, result_bellman, color='#888888') # Gris
+            st_folium(m_bell, width=None, height=map_height, key="map_bell_popup")
+
+        else:
+            st.error("Échec")
+    
+    # Vérification de cohérence
+    st.markdown("---")
+    if result_dijkstra.success and result_astar.success and result_bellman.success:
+        if abs(result_dijkstra.cost - result_astar.cost) < 0.001 and abs(result_astar.cost - result_bellman.cost) < 0.001:
+            st.success("✅ Tous les algorithmes trouvent le même chemin optimal !")
+        else:
+            st.warning("⚠️ Les algorithmes trouvent des chemins différents.")
+
+
 def main():
     """Application principale."""
     
@@ -118,6 +327,8 @@ def main():
         page_icon="🧭",
         layout="wide"
     )
+    
+
     
     # Charger Font Awesome
     st.markdown("""
@@ -155,12 +366,103 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    # Initialiser le graphe
-    if 'graph' not in st.session_state:
-        with st.spinner("Chargement de la carte..."):
-            st.session_state.graph = create_sample_city()
+    # Option pour choisir le type de graphe
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### <i class='fas fa-map'></i> Type de carte", unsafe_allow_html=True)
     
-    graph = st.session_state.graph
+    # Afficher un avertissement si OSMnx n'est pas disponible
+    if not OSMNX_AVAILABLE:
+        st.sidebar.error("""
+        ⚠️ **OSMnx non installé**
+        
+        Pour utiliser les vraies routes et distances :
+        ```bash
+        pip install osmnx>=1.8.0
+        ```
+        """)
+    
+    use_real_map = st.sidebar.checkbox(
+        "Utiliser les vraies routes (OpenStreetMap)",
+        value=False,
+        disabled=not OSMNX_AVAILABLE,
+        help="Active les vraies coordonnées géographiques et distances réelles. Plus lent au chargement." if OSMNX_AVAILABLE else "OSMnx doit être installé pour activer cette option."
+    )
+    
+    # Initialiser le graphe
+    graph_key = f"graph_{use_real_map}"
+    is_real_graph_key = f"is_real_graph_{use_real_map}"
+    loading_message_key = f"loading_msg_{use_real_map}"
+    
+    if graph_key not in st.session_state:
+        if use_real_map and OSMNX_AVAILABLE:
+            # Essayer de charger OSM (zone plus petite pour éviter les timeouts)
+            # Utiliser une zone plus petite que tout Paris pour un chargement plus rapide
+            try:
+                graph = create_real_city_from_osm("11e Arrondissement, Paris, France", "drive", max_nodes=3000)
+                st.session_state[graph_key] = graph
+                # Vérifier si c'est vraiment un graphe OSM (plus de 500 sommets = probablement OSM)
+                # Un graphe généré a 100 sommets
+                is_real = graph.num_vertices() > 150  # Seuil pour distinguer OSM du graphe généré (100)
+                st.session_state[is_real_graph_key] = is_real
+                
+                if is_real:
+                    st.session_state[loading_message_key] = {
+                        "type": "success",
+                        "message": f"✅ Carte OSM chargée : {graph.num_vertices()} intersections, {graph.num_edges_count()} routes"
+                    }
+                else:
+                    st.session_state[loading_message_key] = {
+                        "type": "warning",
+                        "message": "⚠️ Le chargement OSM a échoué. Utilisation d'un graphe généré."
+                    }
+            except Exception as e:
+                # En cas d'erreur, utiliser le graphe généré
+                st.session_state[graph_key] = create_sample_city()
+                st.session_state[is_real_graph_key] = False
+                st.session_state[loading_message_key] = {
+                    "type": "error",
+                    "message": f"❌ Erreur lors du chargement OSM : {str(e)[:100]}..."
+                }
+        else:
+            with st.spinner("Chargement de la carte..."):
+                st.session_state[graph_key] = create_sample_city()
+                st.session_state[is_real_graph_key] = False
+                st.session_state[loading_message_key] = None
+    else:
+        # Récupérer le flag existant
+        if is_real_graph_key not in st.session_state:
+            # Pour les anciens graphes, vérifier le nombre de sommets
+            graph = st.session_state[graph_key]
+            st.session_state[is_real_graph_key] = graph.num_vertices() > 150
+    
+    graph = st.session_state[graph_key]
+    is_real_graph = st.session_state.get(is_real_graph_key, False)
+    
+    # Afficher UN SEUL message selon l'état du graphe
+    if not is_real_graph and not use_real_map:
+        # Graphe généré normal (utilisateur n'a pas coché OSM)
+        st.sidebar.info("ℹ️ **Graphe généré** : Les distances affichées ne sont pas réalistes. Cochez 'Utiliser les vraies routes' pour des distances réelles.")
+    elif not is_real_graph and use_real_map:
+        # L'utilisateur a coché OSM mais le chargement a échoué
+        # Afficher le message détaillé si disponible, sinon un message générique
+        if loading_message_key in st.session_state and st.session_state[loading_message_key]:
+            msg_data = st.session_state[loading_message_key]
+            if msg_data["type"] == "error":
+                st.sidebar.error(msg_data["message"])
+            else:
+                st.sidebar.warning("⚠️ **Le chargement OSM a échoué**. Utilisation d'un graphe généré. Les distances ne sont pas réalistes.")
+        else:
+            st.sidebar.warning("⚠️ **Le chargement OSM a échoué**. Utilisation d'un graphe généré. Les distances ne sont pas réalistes.")
+    else:
+        # Graphe OSM chargé avec succès
+        if loading_message_key in st.session_state and st.session_state[loading_message_key]:
+            msg_data = st.session_state[loading_message_key]
+            if msg_data["type"] == "success":
+                st.sidebar.success(msg_data["message"])
+            else:
+                st.sidebar.success("✅ **Vraies routes OSM** : Les distances affichées sont réelles.")
+        else:
+            st.sidebar.success("✅ **Vraies routes OSM** : Les distances affichées sont réelles.")
     
     # Options
     st.sidebar.subheader("Algorithme")
@@ -281,13 +583,13 @@ def main():
         # Messages d'aide contextuels (UX améliorée)
         if source == target:
             st.markdown("""
-                <div style='background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0;'>
+                <div style='background-color: #fff3cd; color: #856404; border: 1px solid #ffc107; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0;'>
                     <i class='fas fa-exclamation-triangle'></i> <strong>Départ et arrivée identiques !</strong> Choisissez deux points différents.
                 </div>
             """, unsafe_allow_html=True)
         elif not calculate and 'result' not in st.session_state:
             st.markdown("""
-                <div style='background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0;'>
+                <div style='background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0;'>
                     <i class='fas fa-hand-point-right'></i> <strong>Sélectionnez un départ et une arrivée, puis cliquez sur '<i class='fas fa-rocket'></i> Calculer le trajet'</strong>
                 </div>
             """, unsafe_allow_html=True)
@@ -419,88 +721,14 @@ def main():
                 st.session_state.show_comparison = False
             
             # Bouton pour afficher/masquer la comparaison
-            col_btn1, col_btn2 = st.columns([1, 4])
-            with col_btn1:
-                if st.button("Comparer les 3 Algorithmes", use_container_width=True):
-                    st.session_state.show_comparison = not st.session_state.show_comparison
+            # Utiliser toute la largeur pour éviter que le texte soit coupé
+            # Bouton pour afficher/masquer la comparaison (Popup)
+            if st.button("Comparer les 3 Algorithmes (Popup)", use_container_width=True, type="primary"):
+                show_comparison_dialog(graph, source, target)
+
             
-            # Afficher la comparaison si le bouton a été cliqué
-            if st.session_state.show_comparison:
-                st.markdown("""
-                    <div style='margin-bottom: 1rem; background-color: #e7f3ff; border-left: 4px solid #2196F3; padding: 0.75rem; border-radius: 0.25rem;'>
-                        <i class='fas fa-info-circle'></i> <strong>Comparaison en cours...</strong> Les 3 algorithmes sont calculés pour comparer leurs performances.
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # Calculer avec les 3 algorithmes
-                with st.spinner("Comparaison en cours..."):
-                    result_dijkstra = dijkstra(graph, source, target)
-                    result_astar = astar(graph, source, target)
-                    result_bellman = bellman_ford(graph, source, target)
-                
-                # Affichage côte à côte
-                col_dijk, col_astar, col_bell = st.columns(3)
-                
-                with col_dijk:
-                    st.markdown("### <i class='fas fa-square'></i> Dijkstra", unsafe_allow_html=True)
-                    if result_dijkstra.success:
-                        st.metric("Temps", f"{result_dijkstra.execution_time*1000:.2f} ms")
-                        st.metric("Sommets", result_dijkstra.visited_nodes)
-                        st.metric("Distance", f"{result_dijkstra.cost:.3f} km")
-                    else:
-                        st.markdown("""
-                            <div style='background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0; color: #721c24;'>
-                                <i class='fas fa-times-circle'></i> Échec
-                            </div>
-                        """, unsafe_allow_html=True)
-                
-                with col_astar:
-                    st.markdown("### <i class='fas fa-star'></i> A*", unsafe_allow_html=True)
-                    if result_astar.success:
-                        st.metric("Temps", f"{result_astar.execution_time*1000:.2f} ms")
-                        st.metric("Sommets", result_astar.visited_nodes)
-                        st.metric("Distance", f"{result_astar.cost:.3f} km")
-                        # Indicateur de performance
-                        if result_astar.visited_nodes < result_dijkstra.visited_nodes:
-                            st.markdown(f"""
-                                <div style='background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0; color: #155724;'>
-                                    <i class='fas fa-bolt'></i> {((result_dijkstra.visited_nodes - result_astar.visited_nodes) / result_dijkstra.visited_nodes * 100):.0f}% plus rapide
-                                </div>
-                            """, unsafe_allow_html=True)
-                    else:
-                        st.markdown("""
-                            <div style='background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0; color: #721c24;'>
-                                <i class='fas fa-times-circle'></i> Échec
-                            </div>
-                        """, unsafe_allow_html=True)
-                
-                with col_bell:
-                    st.markdown("### <i class='fas fa-shield-alt'></i> Bellman-Ford", unsafe_allow_html=True)
-                    if result_bellman.success:
-                        st.metric("Temps", f"{result_bellman.execution_time*1000:.2f} ms")
-                        st.metric("Sommets", result_bellman.visited_nodes)
-                        st.metric("Distance", f"{result_bellman.cost:.3f} km")
-                    else:
-                        st.markdown("""
-                            <div style='background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0; color: #721c24;'>
-                                <i class='fas fa-times-circle'></i> Échec
-                            </div>
-                        """, unsafe_allow_html=True)
-                
-                # Vérification de cohérence
-                if result_dijkstra.success and result_astar.success and result_bellman.success:
-                    if abs(result_dijkstra.cost - result_astar.cost) < 0.001 and abs(result_astar.cost - result_bellman.cost) < 0.001:
-                        st.markdown("""
-                            <div style='background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0; color: #155724;'>
-                                <i class='fas fa-check-circle'></i> <strong>Tous les algorithmes trouvent le même chemin optimal !</strong>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.markdown("""
-                            <div style='background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0; color: #856404;'>
-                                <i class='fas fa-exclamation-triangle'></i> <strong>Attention</strong> : Les algorithmes trouvent des chemins différents.
-                            </div>
-                        """, unsafe_allow_html=True)
+            # (Ancien code de comparaison supprimé/remplacé par le dialog)
+
             
             st.markdown("---")
             
@@ -542,12 +770,7 @@ def main():
                 st.markdown(f"   <i class='fas fa-ellipsis-v'></i> {len(result.path) - 2} étapes intermédiaires", unsafe_allow_html=True)
                 st.markdown(f"<i class='fas fa-circle' style='color: red;'></i> **Arrivée** : Intersection {result.path[-1]}", unsafe_allow_html=True)
         
-        else:
-            st.markdown("""
-                <div style='background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 0.25rem; padding: 0.75rem; margin: 1rem 0; color: #856404;'>
-                    <i class='fas fa-hand-point-right'></i> <strong>Sélectionnez un départ et une arrivée, puis cliquez sur 'Calculer le trajet'</strong>
-                </div>
-            """, unsafe_allow_html=True)
+
     
     # Section d'aide
     st.markdown("---")
